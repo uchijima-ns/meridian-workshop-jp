@@ -15,10 +15,10 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.inventoryTurnover') }}</span>
             </div>
-            <div class="kpi-value">4.2</div>
-            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 4.5 (-6.67%)</div>
+            <div class="kpi-value">—</div>
+            <div class="kpi-goal">定義を確認中</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress" style="width: 93.33%"></div>
+              <div class="kpi-progress" style="width: 0%"></div>
             </div>
           </div>
 
@@ -26,10 +26,10 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.ordersFulfilled') }}</span>
             </div>
-            <div class="kpi-value">{{ ordersData.fulfilled }}</div>
-            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: {{ ordersData.goal }} ({{ calculatePercentage(ordersData.fulfilled, ordersData.goal) }}%)</div>
+            <div class="kpi-value">{{ ordersFulfilledData.fulfilled }}</div>
+            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: {{ ordersFulfilledData.goal }} ({{ calculatePercentage(ordersFulfilledData.fulfilled, ordersFulfilledData.goal) }}%)</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress" :style="{ width: calculatePercentage(ordersData.fulfilled, ordersData.goal) + '%' }"></div>
+              <div class="kpi-progress" :style="{ width: calculatePercentage(ordersFulfilledData.fulfilled, ordersFulfilledData.goal) + '%' }"></div>
             </div>
           </div>
 
@@ -37,7 +37,7 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.orderFillRate') }}</span>
             </div>
-            <div class="kpi-value">{{ fillRate }}%</div>
+            <div class="kpi-value">{{ fillRate.toFixed(1) }}%</div>
             <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 95% ({{ fillRate - 95 > 0 ? '+' : '' }}{{ (fillRate - 95).toFixed(2) }}%)</div>
             <div class="kpi-progress-bar">
               <div class="kpi-progress success" :style="{ width: (fillRate / 95 * 100) + '%' }"></div>
@@ -59,10 +59,10 @@
             <div class="kpi-header">
               <span class="kpi-label">{{ t('dashboard.kpi.avgProcessingTime') }}</span>
             </div>
-            <div class="kpi-value">2.8</div>
-            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 3.0 (-6.67%)</div>
+            <div class="kpi-value">{{ avgProcessingTime.toFixed(1) }}</div>
+            <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 3.0 ({{ avgProcessingTime - 3.0 > 0 ? '+' : '' }}{{ ((avgProcessingTime / 3.0 - 1) * 100).toFixed(2) }}%)</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress success" style="width: 93.33%"></div>
+              <div class="kpi-progress success" :style="{ width: Math.min((3.0 / Math.max(avgProcessingTime, 0.01) * 100), 100) + '%' }"></div>
             </div>
           </div>
         </div>
@@ -337,8 +337,33 @@ export default {
       getCurrentFilters
     } = useFilters()
 
-    const ordersData = ref({ fulfilled: 187, goal: 200 })
-    const fillRate = ref(96.8)
+    const ordersFulfilledData = computed(() => {
+      const fulfilled = allOrders.value.filter(o => o.status.toLowerCase() === 'delivered').length
+      const goal = selectedPeriod.value === 'all' ? 200 : Math.round(200 / 12)
+      return { fulfilled, goal }
+    })
+
+    const fillRate = computed(() => {
+      const total = allOrders.value.length
+      if (total === 0) return 0
+      const filled = allOrders.value.filter(o => {
+        const status = o.status.toLowerCase()
+        return status === 'delivered' || status === 'shipped'
+      }).length
+      return (filled / total) * 100
+    })
+
+    const avgProcessingTime = computed(() => {
+      const deliveredWithDates = allOrders.value.filter(o =>
+        o.status.toLowerCase() === 'delivered' && o.order_date && o.actual_delivery
+      )
+      if (deliveredWithDates.length === 0) return 0
+      const totalDays = deliveredWithDates.reduce((sum, o) => {
+        const days = (new Date(o.actual_delivery) - new Date(o.order_date)) / (1000 * 60 * 60 * 24)
+        return sum + days
+      }, 0)
+      return totalDays / deliveredWithDates.length
+    })
 
     const revenueGoal = computed(() => {
       // $800K per month, so if looking at all months (12 months), goal is 12 * 800K = 9.6M
@@ -684,8 +709,9 @@ export default {
       loading,
       error,
       summary,
-      ordersData,
+      ordersFulfilledData,
       fillRate,
+      avgProcessingTime,
       statusData,
       orderHealthMetrics,
       categoryData,
