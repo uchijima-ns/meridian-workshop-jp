@@ -40,7 +40,7 @@
             <div class="kpi-value">{{ fillRate.toFixed(1) }}%</div>
             <div class="kpi-goal">{{ t('dashboard.kpi.goal') }}: 95% ({{ fillRate - 95 > 0 ? '+' : '' }}{{ (fillRate - 95).toFixed(2) }}%)</div>
             <div class="kpi-progress-bar">
-              <div class="kpi-progress success" :style="{ width: (fillRate / 95 * 100) + '%' }"></div>
+              <div class="kpi-progress success" :style="{ width: Math.min((fillRate / 95 * 100), 100) + '%' }"></div>
             </div>
           </div>
 
@@ -353,16 +353,25 @@ export default {
       return (filled / total) * 100
     })
 
+    // Average days between order_date and actual_delivery for a list of delivered orders.
+    // Skips entries with unparseable dates instead of propagating NaN into KPI displays.
+    const calculateAvgFulfillmentDays = (deliveredOrders) => {
+      let totalDays = 0
+      let countWithDates = 0
+      deliveredOrders.forEach(o => {
+        if (!o.order_date || !o.actual_delivery) return
+        const orderDate = new Date(o.order_date)
+        const deliveryDate = new Date(o.actual_delivery)
+        if (isNaN(orderDate.getTime()) || isNaN(deliveryDate.getTime())) return
+        totalDays += (deliveryDate - orderDate) / (1000 * 60 * 60 * 24)
+        countWithDates++
+      })
+      return countWithDates > 0 ? totalDays / countWithDates : 0
+    }
+
     const avgProcessingTime = computed(() => {
-      const deliveredWithDates = allOrders.value.filter(o =>
-        o.status.toLowerCase() === 'delivered' && o.order_date && o.actual_delivery
-      )
-      if (deliveredWithDates.length === 0) return 0
-      const totalDays = deliveredWithDates.reduce((sum, o) => {
-        const days = (new Date(o.actual_delivery) - new Date(o.order_date)) / (1000 * 60 * 60 * 24)
-        return sum + days
-      }, 0)
-      return totalDays / deliveredWithDates.length
+      const deliveredOrders = allOrders.value.filter(o => o.status.toLowerCase() === 'delivered')
+      return calculateAvgFulfillmentDays(deliveredOrders)
     })
 
     const revenueGoal = computed(() => {
@@ -406,18 +415,7 @@ export default {
       const onTimeRate = deliveredOrders.length > 0 ? (onTimeDeliveries / deliveredOrders.length) * 100 : 0
 
       // Calculate average fulfillment speed (days from order to delivery for delivered orders)
-      let totalDays = 0
-      let countWithDates = 0
-      deliveredOrders.forEach(o => {
-        if (o.order_date && o.actual_delivery) {
-          const orderDate = new Date(o.order_date)
-          const deliveryDate = new Date(o.actual_delivery)
-          const days = Math.round((deliveryDate - orderDate) / (1000 * 60 * 60 * 24))
-          totalDays += days
-          countWithDates++
-        }
-      })
-      const avgFulfillmentDays = countWithDates > 0 ? totalDays / countWithDates : 0
+      const avgFulfillmentDays = calculateAvgFulfillmentDays(deliveredOrders)
 
       return {
         totalOrders,
